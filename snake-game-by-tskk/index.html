@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Cobrinha Personalizada</title>
+
+<style>
+:root {
+  --bg: #0f1220;
+  --board: #11142a;
+  --snake: #00e676;
+  --snake-head: #1bff8a;
+  --food: #ff5252;
+  --grid: #1e2245;
+  --ui: #eaeaf0;
+  --accent: #7c8cff;
+  --cell: 20px;
+  --cols: 20;
+  --rows: 20;
+}
+
+* { box-sizing: border-box; font-family: system-ui, Arial, sans-serif; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(1200px 600px at 10% -10%, #1b1f4b, transparent), var(--bg);
+  color: var(--ui);
+  touch-action: none;
+}
+
+.app {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr auto;
+  padding: 16px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 16px;
+}
+
+.board {
+  position: relative;
+}
+
+canvas {
+  background: var(--board);
+  border-radius: 12px;
+  image-rendering: pixelated;
+}
+
+#playBtn {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 170px;
+  height: 65px;
+  font-size: 22px;
+  border-radius: 16px;
+  border: none;
+  background: linear-gradient(180deg, var(--accent), #5b6bff);
+  color: #0b0e2a;
+  font-weight: 800;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.panel {
+  display: grid;
+  gap: 12px;
+  min-width: 220px;
+  background: rgba(0,0,0,.25);
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.panel h2 { margin: 4px 0 8px; font-size: 18px; }
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.row label { font-size: 13px; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 8px;
+}
+
+.stat {
+  background: rgba(255,255,255,.06);
+  padding: 8px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.stat b { font-size: 18px; display: block; }
+
+.hint { font-size: 12px; opacity: .8; }
+</style>
+</head>
+
+<body>
+
+<div class="app">
+  <div class="board">
+    <canvas id="game"></canvas>
+    <button id="playBtn">JOGAR</button>
+  </div>
+
+  <div class="panel">
+    <h2>Configurações</h2>
+
+    <div class="row">
+      <label>Velocidade</label>
+      <input id="speed" type="range" min="4" max="20" value="10">
+    </div>
+
+    <div class="row">
+      <label>Modo</label>
+      <select id="mode">
+        <option value="classic">classicoo</option>
+        <option value="wrap">no clip</option>
+        <option value="easy">modo devagar</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>Cor da cobra</label>
+      <input id="snakeColor" type="color" value="#00e676">
+    </div>
+
+    <div class="row">
+      <label>cor da maçã</label>
+      <input id="foodColor" type="color" value="#ff5252">
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b id="score">0</b>Pontos</div>
+      <div class="stat"><b id="best">0</b>Recorde</div>
+      <div class="stat"><b id="len">3</b>Tamanho</div>
+    </div>
+
+    <div class="hint">use o dedo para mexer a cobra ou use as teclas do seu teclado</div>
+  </div>
+</div>
+
+</div class="row">
+  <label>CONTROLES (PARA PC) WASD OU AS SETAS DO TECLADO
+  </div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const playBtn = document.getElementById("playBtn");
+
+const CELL = 20;
+const COLS = 20;
+const ROWS = 20;
+
+canvas.width = COLS * CELL;
+canvas.height = ROWS * CELL;
+
+const ui = {
+  speed: document.getElementById("speed"),
+  mode: document.getElementById("mode"),
+  snakeColor: document.getElementById("snakeColor"),
+  foodColor: document.getElementById("foodColor"),
+  score: document.getElementById("score"),
+  best: document.getElementById("best"),
+  len: document.getElementById("len"),
+};
+
+let state;
+const bestKey = "snake_best";
+ui.best.textContent = localStorage.getItem(bestKey) || 0;
+
+function reset() {
+  state = {
+    snake: [{x:10,y:10},{x:9,y:10},{x:8,y:10}],
+    dir:{x:1,y:0},
+    next:{x:1,y:0},
+    food: spawnFood(),
+    score:0,
+    running:false,
+    tick:0
+  };
+  playBtn.style.display = "block";
+  updateStats();
+  draw();
+}
+
+function spawnFood(){
+  return {
+    x: Math.floor(Math.random()*COLS),
+    y: Math.floor(Math.random()*ROWS)
+  };
+}
+
+function updateStats(){
+  ui.score.textContent = state.score;
+  ui.len.textContent = state.snake.length;
+  const best = Math.max(state.score, parseInt(ui.best.textContent));
+  ui.best.textContent = best;
+  localStorage.setItem(bestKey, best);
+}
+
+function step(){
+  if(!state.running) return;
+  state.tick++;
+  if(state.tick % Math.max(1,21-ui.speed.value) !== 0) return;
+
+  state.dir = state.next;
+  const head = {...state.snake[0]};
+  head.x += state.dir.x;
+  head.y += state.dir.y;
+
+  if(ui.mode.value === "wrap"){
+    head.x = (head.x + COLS) % COLS;
+    head.y = (head.y + ROWS) % ROWS;
+  } else {
+    if(head.x<0||head.y<0||head.x>=COLS||head.y>=ROWS) return gameOver();
+  }
+
+  if(ui.mode.value === "classic" &&
+     state.snake.some(s=>s.x===head.x && s.y===head.y))
+    return gameOver();
+
+  state.snake.unshift(head);
+
+  if(head.x===state.food.x && head.y===state.food.y){
+    state.score += 10;
+    state.food = spawnFood();
+    updateStats();
+  } else {
+    state.snake.pop();
+  }
+
+  draw();
+}
+
+function gameOver(){
+  state.running = false;
+  playBtn.style.display = "block";
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.fillStyle = ui.foodColor.value;
+  ctx.fillRect(state.food.x*CELL, state.food.y*CELL, CELL, CELL);
+
+  state.snake.forEach((s,i)=>{
+    ctx.fillStyle = i===0 ? "#1bff8a" : ui.snakeColor.value;
+    ctx.fillRect(s.x*CELL, s.y*CELL, CELL, CELL);
+  });
+}
+
+
+let sx=0, sy=0;
+canvas.addEventListener("touchstart", e=>{
+  const t = e.touches[0];
+  sx = t.clientX;
+  sy = t.clientY;
+},{passive:true});
+
+canvas.addEventListener("touchend", e=>{
+  const t = e.changedTouches[0];
+  const dx = t.clientX - sx;
+  const dy = t.clientY - sy;
+
+  if(Math.abs(dx) > Math.abs(dy))
+    state.next = {x:Math.sign(dx),y:0};
+  else
+    state.next = {x:0,y:Math.sign(dy)};
+
+  state.running = true;
+  playBtn.style.display = "none";
+},{passive:true});
+
+playBtn.onclick = ()=>{
+  state.running = true;
+  playBtn.style.display = "none";
+};
+
+reset();
+setInterval(step,16);
+</script>
+
+</body>
+</html>
